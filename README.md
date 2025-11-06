@@ -27,14 +27,14 @@ composer require ritechoice23/laravel-followable
 Publish and run the migrations:
 
 ```bash
-php artisan vendor:publish --tag="laravel-followable-migrations"
+php artisan vendor:publish --tag="followable-migrations"
 php artisan migrate
 ```
 
 Optionally, publish the config file:
 
 ```bash
-php artisan vendor:publish --tag="laravel-followable-config"
+php artisan vendor:publish --tag="followable-config"
 ```
 
 ## Configuration
