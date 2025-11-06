@@ -10,3 +10,7 @@ parameters:
     tmpDir: build/phpstan
     checkOctaneCompatibility: true
     checkModelProperties: true
+    reportUnmatchedIgnoredErrors: false
+    ignoreErrors:
+        - '#^Trait Ritechoice23\\Followable\\Traits\\CanFollow is used zero times and is not analysed\.$#'
+        - '#^Trait Ritechoice23\\Followable\\Traits\\HasFollowers is used zero times and is not analysed\.$#'
