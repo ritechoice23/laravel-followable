@@ -1,8 +1,8 @@
 # Laravel Followable
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/ritechoice23/laravel-followable.svg?style=flat-square)](https://packagist.org/packages/ritechoice23/laravel-followable)
-[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/ritechoice23/laravel-followable/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/ritechoice23/laravel-followable/actions?query=workflow%3Arun-tests+branch%3Amain)
-[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/ritechoice23/laravel-followable/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/ritechoice23/laravel-followable/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/ritechoice23/laravel-followable/run-tests.yml?branch=master&label=tests&style=flat-square)](https://github.com/ritechoice23/laravel-followable/actions?query=workflow%3Arun-tests+branch%3Amaster)
+[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/ritechoice23/laravel-followable/fix-php-code-style-issues.yml?branch=master&label=code%20style&style=flat-square)](https://github.com/ritechoice23/laravel-followable/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amaster)
 [![Total Downloads](https://img.shields.io/packagist/dt/ritechoice23/laravel-followable.svg?style=flat-square)](https://packagist.org/packages/ritechoice23/laravel-followable)
 
 A modern, minimal Laravel package that adds follow/unfollow functionality to Eloquent models. Any model can follow any other model with full polymorphic relationships support.
