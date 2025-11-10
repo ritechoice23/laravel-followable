@@ -10,9 +10,11 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use Ritechoice23\Followable\Models\Follow;
+use Ritechoice23\Followable\Support\MixedModelsCollection;
 
 trait CanFollow
 {
+    use MorphMapHelper;
     public function followingRecords(): MorphMany
     {
         return $this->morphMany(Follow::class, 'follower');
@@ -23,7 +25,7 @@ trait CanFollow
      *
      * Best for single-type followings. For mixed types, use followingsGrouped().
      */
-    public function followings(?string $type = null): Builder
+    public function followings(?string $type = null): Builder|Collection
     {
         return $this->buildFollowingsQuery($type);
     }
@@ -39,7 +41,7 @@ trait CanFollow
     /**
      * Get followings filtered by specific type(s).
      */
-    public function followingsOfType(string|array $types): Builder
+    public function followingsOfType(string|array $types): Builder|Collection
     {
         $types = is_array($types) ? $types : [$types];
 
@@ -65,7 +67,7 @@ trait CanFollow
         $grouped = collect();
 
         foreach ($followRecords as $type => $records) {
-            $modelClass = $type;
+            $modelClass = $this->getMorphClassFor($type);
             $ids = $records->pluck('followable_id')->unique()->values();
 
             if (class_exists($modelClass)) {
@@ -81,7 +83,7 @@ trait CanFollow
     {
         [$targetModel, $targetType, $targetId] = $this->normalizeTarget($target);
 
-        if (! config('follow.allow_self_follow', false)) {
+        if (!config('follow.allow_self_follow', false)) {
             if ($this->getMorphClass() === $targetType && $this->getKey() === $targetId) {
                 return false;
             }
@@ -140,7 +142,8 @@ trait CanFollow
         $query = $this->followingRecords();
 
         if ($type !== null) {
-            $query->where('followable_type', $type);
+            $resolvedType = $this->resolveMorphType($type);
+            $query->where('followable_type', $resolvedType);
         }
 
         return $query->count();
@@ -151,14 +154,16 @@ trait CanFollow
      */
     public function mutualFollowings(Model $model, ?string $type = null): Collection
     {
+        $resolvedType = $type ? $this->resolveMorphType($type) : null;
+
         // Get following IDs for this model
         $thisFollowingIds = $this->followingRecords()
-            ->when($type, fn ($q) => $q->where('followable_type', $type))
+            ->when($resolvedType, fn($q) => $q->where('followable_type', $resolvedType))
             ->pluck('followable_id');
 
         // Get following IDs for the other model
         $otherFollowingIds = $model->followingRecords()
-            ->when($type, fn ($q) => $q->where('followable_type', $type))
+            ->when($resolvedType, fn($q) => $q->where('followable_type', $resolvedType))
             ->pluck('followable_id');
 
         // Find intersection
@@ -169,8 +174,11 @@ trait CanFollow
         }
 
         // If type is specified, fetch those models
-        if ($type !== null && class_exists($type)) {
-            return $type::whereIn('id', $mutualIds)->get();
+        if ($resolvedType !== null) {
+            $modelClass = $this->getMorphClassFor($resolvedType);
+            if (class_exists($modelClass)) {
+                return $modelClass::whereIn('id', $mutualIds)->get();
+            }
         }
 
         // For mixed types, group by type
@@ -182,9 +190,10 @@ trait CanFollow
 
         $result = collect();
         foreach ($mutualFollows as $followableType => $records) {
-            if (class_exists($followableType)) {
+            $modelClass = $this->getMorphClassFor($followableType);
+            if (class_exists($modelClass)) {
                 $ids = $records->pluck('followable_id')->unique()->values();
-                $models = $followableType::whereIn('id', $ids)->get();
+                $models = $modelClass::whereIn('id', $ids)->get();
                 $result = $result->merge($models);
             }
         }
@@ -206,13 +215,15 @@ trait CanFollow
      */
     public function mutualConnections(?string $type = null): Collection
     {
-        if (! method_exists($this, 'followRecords')) {
+        if (!method_exists($this, 'followRecords')) {
             return collect();
         }
 
+        $resolvedType = $type ? $this->resolveMorphType($type) : null;
+
         // Get IDs of models this model follows
         $followingIds = $this->followingRecords()
-            ->when($type, fn ($q) => $q->where('followable_type', $type))
+            ->when($resolvedType, fn($q) => $q->where('followable_type', $resolvedType))
             ->pluck('followable_id');
 
         if ($followingIds->isEmpty()) {
@@ -221,7 +232,7 @@ trait CanFollow
 
         // Get IDs of models that follow this model back
         $followerIds = $this->followRecords()
-            ->when($type, fn ($q) => $q->where('follower_type', $type))
+            ->when($resolvedType, fn($q) => $q->where('follower_type', $resolvedType))
             ->pluck('follower_id');
 
         // Find mutual (intersection)
@@ -232,8 +243,11 @@ trait CanFollow
         }
 
         // If type specified, fetch those models
-        if ($type !== null && class_exists($type)) {
-            return $type::whereIn('id', $mutualIds)->get();
+        if ($resolvedType !== null) {
+            $modelClass = $this->getMorphClassFor($resolvedType);
+            if (class_exists($modelClass)) {
+                return $modelClass::whereIn('id', $mutualIds)->get();
+            }
         }
 
         // For mixed types
@@ -245,9 +259,10 @@ trait CanFollow
 
         $result = collect();
         foreach ($mutualFollows as $followableType => $records) {
-            if (class_exists($followableType)) {
+            $modelClass = $this->getMorphClassFor($followableType);
+            if (class_exists($modelClass)) {
                 $ids = $records->pluck('followable_id')->unique()->values();
-                $models = $followableType::whereIn('id', $ids)->get();
+                $models = $modelClass::whereIn('id', $ids)->get();
                 $result = $result->merge($models);
             }
         }
@@ -265,27 +280,30 @@ trait CanFollow
         });
     }
 
-    protected function buildFollowingsQuery(?string $type = null, ?array $types = null): Builder
+    protected function buildFollowingsQuery(?string $type = null, ?array $types = null): Builder|Collection
     {
         $followsTable = config('follow.table_name', 'follows');
 
         if ($types !== null && count($types) > 0) {
-            if (count($types) === 1) {
-                return $this->buildSingleTypeFollowingsQuery($types[0], $followsTable);
+            $resolvedTypes = array_map(fn($t) => $this->resolveMorphType($t), $types);
+
+            if (count($resolvedTypes) === 1) {
+                return $this->buildSingleTypeFollowingsQuery($resolvedTypes[0], $followsTable);
             }
 
-            return $this->buildMixedTypesFollowingsQuery($types, $followsTable);
+            return $this->buildMixedTypesFollowingsCollection($resolvedTypes, $followsTable);
         }
 
         if ($type !== null) {
-            return $this->buildSingleTypeFollowingsQuery($type, $followsTable);
+            $resolvedType = $this->resolveMorphType($type);
+            return $this->buildSingleTypeFollowingsQuery($resolvedType, $followsTable);
         }
 
         $distinctTypes = $this->followingRecords()
             ->select('followable_type')
             ->distinct()
             ->pluck('followable_type')
-            ->filter(fn ($t) => class_exists($t))
+            ->filter(fn($t) => class_exists($this->getMorphClassFor($t)))
             ->values()
             ->all();
 
@@ -302,16 +320,18 @@ trait CanFollow
             return $this->buildSingleTypeFollowingsQuery($distinctTypes[0], $followsTable);
         }
 
-        return $this->buildMixedTypesFollowingsQuery($distinctTypes, $followsTable);
+        return $this->buildMixedTypesFollowingsCollection($distinctTypes, $followsTable);
     }
 
     protected function buildSingleTypeFollowingsQuery(string $type, string $followsTable): Builder
     {
-        if (! class_exists($type)) {
+        $modelClass = $this->getMorphClassFor($type);
+
+        if (!class_exists($modelClass)) {
             return $this->newQuery()->whereRaw('1 = 0');
         }
 
-        $model = new $type;
+        $model = new $modelClass;
         $table = $model->getTable();
         $keyName = $model->getKeyName();
 
@@ -326,65 +346,28 @@ trait CanFollow
             ->orderBy("{$followsTable}.created_at", 'desc');
     }
 
-    protected function buildMixedTypesFollowingsQuery(array $types, string $followsTable): Builder
+    protected function buildMixedTypesFollowingsCollection(array $types, string $followsTable): Collection
     {
-        $firstModel = new $types[0];
-        $builder = $firstModel->newQuery();
-        $self = $this;
+        $allFollowings = collect();
 
-        $builder->macro('get', function ($columns = ['*']) use ($types, $followsTable, $self) {
-            $allFollowings = collect();
-
-            foreach ($types as $type) {
-                if (! class_exists($type)) {
-                    continue;
-                }
-
-                $results = $self->buildSingleTypeFollowingsQuery($type, $followsTable)->get($columns);
-                $allFollowings = $allFollowings->merge($results);
+        foreach ($types as $type) {
+            $modelClass = $this->getMorphClassFor($type);
+            if (!class_exists($modelClass)) {
+                continue;
             }
 
-            return $allFollowings->sortByDesc(function ($following) use ($self) {
-                return $self->followingRecords()
-                    ->where('followable_type', get_class($following))
-                    ->where('followable_id', $following->getKey())
-                    ->value('created_at');
-            })->values();
-        });
+            $results = $this->buildSingleTypeFollowingsQuery($type, $followsTable)->get();
+            $allFollowings = $allFollowings->merge($results);
+        }
 
-        $builder->macro('paginate', function ($perPage = 15, $columns = ['*'], $pageName = 'page', $page = null) use ($types, $followsTable, $self) {
-            $allFollowings = collect();
+        $sorted = $allFollowings->sortByDesc(function ($following) {
+            return $this->followingRecords()
+                ->where('followable_type', $following->getMorphClass())
+                ->where('followable_id', $following->getKey())
+                ->value('created_at');
+        })->values();
 
-            foreach ($types as $type) {
-                if (! class_exists($type)) {
-                    continue;
-                }
-
-                $query = $self->buildSingleTypeFollowingsQuery($type, $followsTable);
-                $results = $query->get($columns);
-                $allFollowings = $allFollowings->merge($results);
-            }
-
-            $sorted = $allFollowings->sortByDesc(function ($following) use ($self) {
-                return $self->followingRecords()
-                    ->where('followable_type', get_class($following))
-                    ->where('followable_id', $following->getKey())
-                    ->value('created_at');
-            })->values();
-
-            $page = $page ?: (Paginator::resolveCurrentPage($pageName) ?: 1);
-            $items = $sorted->forPage($page, $perPage);
-
-            return new LengthAwarePaginator(
-                $items,
-                $sorted->count(),
-                $perPage,
-                $page,
-                ['path' => Paginator::resolveCurrentPath(), 'pageName' => $pageName]
-            );
-        });
-
-        return $builder->whereRaw('1 = 1');
+        return new MixedModelsCollection($sorted);
     }
 
     protected function normalizeTarget(Model|int|string $target): array

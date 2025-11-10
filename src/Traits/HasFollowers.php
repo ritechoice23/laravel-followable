@@ -11,9 +11,11 @@ use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Ritechoice23\Followable\Models\Follow;
+use Ritechoice23\Followable\Support\MixedModelsCollection;
 
 trait HasFollowers
 {
+    use MorphMapHelper;
     /**
      * Get the Follow pivot records (use when you need metadata).
      */
@@ -27,7 +29,7 @@ trait HasFollowers
      *
      * Best for single-type followers. For mixed types, use followersGrouped().
      */
-    public function followers(?string $type = null): Builder
+    public function followers(?string $type = null): Builder|Collection
     {
         return $this->buildFollowersQuery($type);
     }
@@ -43,7 +45,7 @@ trait HasFollowers
     /**
      * Get followers filtered by specific type(s).
      */
-    public function followersOfType(string|array $types): Builder
+    public function followersOfType(string|array $types): Builder|Collection
     {
         $types = is_array($types) ? $types : [$types];
 
@@ -69,7 +71,7 @@ trait HasFollowers
         $grouped = collect();
 
         foreach ($followRecords as $type => $records) {
-            $modelClass = $type;
+            $modelClass = $this->getMorphClassFor($type);
             $ids = $records->pluck('follower_id')->unique()->values();
 
             if (class_exists($modelClass)) {
@@ -89,7 +91,8 @@ trait HasFollowers
         $query = $this->followRecords();
 
         if ($type !== null) {
-            $query->where('follower_type', $type);
+            $resolvedType = $this->resolveMorphType($type);
+            $query->where('follower_type', $resolvedType);
         }
 
         return $query->count();
@@ -101,15 +104,16 @@ trait HasFollowers
     public function mutualFollowers(Model $model, ?string $type = null): Collection
     {
         $followsTable = config('follow.table_name', 'follows');
+        $resolvedType = $type ? $this->resolveMorphType($type) : null;
 
         // Get follower IDs for this model
         $thisFollowerIds = $this->followRecords()
-            ->when($type, fn ($q) => $q->where('follower_type', $type))
+            ->when($resolvedType, fn($q) => $q->where('follower_type', $resolvedType))
             ->pluck('follower_id');
 
         // Get follower IDs for the other model
         $otherFollowerIds = $model->followRecords()
-            ->when($type, fn ($q) => $q->where('follower_type', $type))
+            ->when($resolvedType, fn($q) => $q->where('follower_type', $resolvedType))
             ->pluck('follower_id');
 
         // Find intersection
@@ -120,8 +124,11 @@ trait HasFollowers
         }
 
         // If type is specified, fetch those models
-        if ($type !== null && class_exists($type)) {
-            return $type::whereIn('id', $mutualIds)->get();
+        if ($resolvedType !== null) {
+            $modelClass = $this->getMorphClassFor($resolvedType);
+            if (class_exists($modelClass)) {
+                return $modelClass::whereIn('id', $mutualIds)->get();
+            }
         }
 
         // For mixed types, group by type
@@ -133,9 +140,10 @@ trait HasFollowers
 
         $result = collect();
         foreach ($mutualFollows as $followerType => $records) {
-            if (class_exists($followerType)) {
+            $modelClass = $this->getMorphClassFor($followerType);
+            if (class_exists($modelClass)) {
                 $ids = $records->pluck('follower_id')->unique()->values();
-                $models = $followerType::whereIn('id', $ids)->get();
+                $models = $modelClass::whereIn('id', $ids)->get();
                 $result = $result->merge($models);
             }
         }
@@ -169,27 +177,30 @@ trait HasFollowers
         });
     }
 
-    protected function buildFollowersQuery(?string $type = null, ?array $types = null): Builder
+    protected function buildFollowersQuery(?string $type = null, ?array $types = null): Builder|Collection
     {
         $followsTable = config('follow.table_name', 'follows');
 
         if ($types !== null && count($types) > 0) {
-            if (count($types) === 1) {
-                return $this->buildSingleTypeFollowersQuery($types[0], $followsTable);
+            $resolvedTypes = array_map(fn($t) => $this->resolveMorphType($t), $types);
+
+            if (count($resolvedTypes) === 1) {
+                return $this->buildSingleTypeFollowersQuery($resolvedTypes[0], $followsTable);
             }
 
-            return $this->buildMixedTypesQuery($types, $followsTable);
+            return $this->buildMixedTypesFollowersCollection($resolvedTypes, $followsTable);
         }
 
         if ($type !== null) {
-            return $this->buildSingleTypeFollowersQuery($type, $followsTable);
+            $resolvedType = $this->resolveMorphType($type);
+            return $this->buildSingleTypeFollowersQuery($resolvedType, $followsTable);
         }
 
         $distinctTypes = $this->followRecords()
             ->select('follower_type')
             ->distinct()
             ->pluck('follower_type')
-            ->filter(fn ($t) => class_exists($t))
+            ->filter(fn($t) => class_exists($this->getMorphClassFor($t)))
             ->values()
             ->all();
 
@@ -206,16 +217,18 @@ trait HasFollowers
             return $this->buildSingleTypeFollowersQuery($distinctTypes[0], $followsTable);
         }
 
-        return $this->buildMixedTypesQuery($distinctTypes, $followsTable);
+        return $this->buildMixedTypesFollowersCollection($distinctTypes, $followsTable);
     }
 
     protected function buildSingleTypeFollowersQuery(string $type, string $followsTable): Builder
     {
-        if (! class_exists($type)) {
+        $modelClass = $this->getMorphClassFor($type);
+
+        if (!class_exists($modelClass)) {
             return $this->newQuery()->whereRaw('1 = 0');
         }
 
-        $model = new $type;
+        $model = new $modelClass;
         $table = $model->getTable();
         $keyName = $model->getKeyName();
 
@@ -230,65 +243,28 @@ trait HasFollowers
             ->orderBy("{$followsTable}.created_at", 'desc');
     }
 
-    protected function buildMixedTypesQuery(array $types, string $followsTable): Builder
+    protected function buildMixedTypesFollowersCollection(array $types, string $followsTable): MixedModelsCollection
     {
-        $firstModel = new $types[0];
-        $builder = $firstModel->newQuery();
-        $self = $this;
+        $allFollowers = collect();
 
-        $builder->macro('get', function ($columns = ['*']) use ($types, $followsTable, $self) {
-            $allFollowers = collect();
-
-            foreach ($types as $type) {
-                if (! class_exists($type)) {
-                    continue;
-                }
-
-                $results = $self->buildSingleTypeFollowersQuery($type, $followsTable)->get($columns);
-                $allFollowers = $allFollowers->merge($results);
+        foreach ($types as $type) {
+            $modelClass = $this->getMorphClassFor($type);
+            if (!class_exists($modelClass)) {
+                continue;
             }
 
-            return $allFollowers->sortByDesc(function ($follower) use ($self) {
-                return $self->followRecords()
-                    ->where('follower_type', get_class($follower))
-                    ->where('follower_id', $follower->getKey())
-                    ->value('created_at');
-            })->values();
-        });
+            $results = $this->buildSingleTypeFollowersQuery($type, $followsTable)->get();
+            $allFollowers = $allFollowers->merge($results);
+        }
 
-        $builder->macro('paginate', function ($perPage = 15, $columns = ['*'], $pageName = 'page', $page = null) use ($types, $followsTable, $self) {
-            $allFollowers = collect();
+        $sorted = $allFollowers->sortByDesc(function ($follower) {
+            return $this->followRecords()
+                ->where('follower_type', $follower->getMorphClass())
+                ->where('follower_id', $follower->getKey())
+                ->value('created_at');
+        })->values();
 
-            foreach ($types as $type) {
-                if (! class_exists($type)) {
-                    continue;
-                }
-
-                $query = $self->buildSingleTypeFollowersQuery($type, $followsTable);
-                $results = $query->get($columns);
-                $allFollowers = $allFollowers->merge($results);
-            }
-
-            $sorted = $allFollowers->sortByDesc(function ($follower) use ($self) {
-                return $self->followRecords()
-                    ->where('follower_type', get_class($follower))
-                    ->where('follower_id', $follower->getKey())
-                    ->value('created_at');
-            })->values();
-
-            $page = $page ?: (Paginator::resolveCurrentPage($pageName) ?: 1);
-            $items = $sorted->forPage($page, $perPage);
-
-            return new LengthAwarePaginator(
-                $items,
-                $sorted->count(),
-                $perPage,
-                $page,
-                ['path' => Paginator::resolveCurrentPath(), 'pageName' => $pageName]
-            );
-        });
-
-        return $builder->whereRaw('1 = 1');
+        return new MixedModelsCollection($sorted);
     }
 
     protected function getCommonColumns(array $types): array
@@ -296,7 +272,7 @@ trait HasFollowers
         $columnSets = [];
 
         foreach ($types as $type) {
-            if (! class_exists($type)) {
+            if (!class_exists($type)) {
                 continue;
             }
 
