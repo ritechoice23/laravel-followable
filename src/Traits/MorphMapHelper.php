@@ -14,10 +14,12 @@ trait MorphMapHelper
         // If it's already a class name, get its morph alias
         if (class_exists($type)) {
             $morphMap = Relation::morphMap();
-            if (!empty($morphMap)) {
+            if (! empty($morphMap)) {
                 $alias = array_search($type, $morphMap, true);
+
                 return $alias !== false ? $alias : $type;
             }
+
             return $type;
         }
 
@@ -39,7 +41,7 @@ trait MorphMapHelper
         $morphMap = Relation::morphMap();
 
         // If morph map exists and type is an alias, return the mapped class
-        if (!empty($morphMap) && isset($morphMap[$type])) {
+        if (! empty($morphMap) && isset($morphMap[$type])) {
             return $morphMap[$type];
         }
 

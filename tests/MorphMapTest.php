@@ -1,9 +1,9 @@
 <?php
 
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Ritechoice23\Followable\Tests\Models\Organization;
 use Ritechoice23\Followable\Tests\Models\Team;
 use Ritechoice23\Followable\Tests\Models\User;
-use Ritechoice23\Followable\Tests\Models\Organization;
 
 beforeEach(function () {
     Relation::morphMap([

@@ -37,7 +37,7 @@ class MixedModelsCollection extends Collection
             $page,
             [
                 'path' => \Illuminate\Pagination\Paginator::resolveCurrentPath(),
-                'pageName' => $pageName
+                'pageName' => $pageName,
             ]
         );
     }
