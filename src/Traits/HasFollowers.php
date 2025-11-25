@@ -105,24 +105,20 @@ trait HasFollowers
         $followsTable = config('follow.table_name', 'follows');
         $resolvedType = $type ? $this->resolveMorphType($type) : null;
 
-        // Get follower IDs for this model
         $thisFollowerIds = $this->followRecords()
-            ->when($resolvedType, fn ($q) => $q->where('follower_type', $resolvedType))
+            ->when($resolvedType, fn($q) => $q->where('follower_type', $resolvedType))
             ->pluck('follower_id');
 
-        // Get follower IDs for the other model
         $otherFollowerIds = $model->followRecords()
-            ->when($resolvedType, fn ($q) => $q->where('follower_type', $resolvedType))
+            ->when($resolvedType, fn($q) => $q->where('follower_type', $resolvedType))
             ->pluck('follower_id');
 
-        // Find intersection
         $mutualIds = $thisFollowerIds->intersect($otherFollowerIds)->values();
 
         if ($mutualIds->isEmpty()) {
             return collect();
         }
 
-        // If type is specified, fetch those models
         if ($resolvedType !== null) {
             $modelClass = $this->getMorphClassFor($resolvedType);
             if (class_exists($modelClass)) {
@@ -181,7 +177,7 @@ trait HasFollowers
         $followsTable = config('follow.table_name', 'follows');
 
         if ($types !== null && count($types) > 0) {
-            $resolvedTypes = array_map(fn ($t) => $this->resolveMorphType($t), $types);
+            $resolvedTypes = array_map(fn($t) => $this->resolveMorphType($t), $types);
 
             if (count($resolvedTypes) === 1) {
                 return $this->buildSingleTypeFollowersQuery($resolvedTypes[0], $followsTable);
@@ -200,7 +196,7 @@ trait HasFollowers
             ->select('follower_type')
             ->distinct()
             ->pluck('follower_type')
-            ->filter(fn ($t) => class_exists($this->getMorphClassFor($t)))
+            ->filter(fn($t) => class_exists($this->getMorphClassFor($t)))
             ->values()
             ->all();
 
@@ -224,7 +220,7 @@ trait HasFollowers
     {
         $modelClass = $this->getMorphClassFor($type);
 
-        if (! class_exists($modelClass)) {
+        if (!class_exists($modelClass)) {
             return $this->newQuery()->whereRaw('1 = 0');
         }
 
@@ -249,7 +245,7 @@ trait HasFollowers
 
         foreach ($types as $type) {
             $modelClass = $this->getMorphClassFor($type);
-            if (! class_exists($modelClass)) {
+            if (!class_exists($modelClass)) {
                 continue;
             }
 
@@ -272,7 +268,7 @@ trait HasFollowers
         $columnSets = [];
 
         foreach ($types as $type) {
-            if (! class_exists($type)) {
+            if (!class_exists($type)) {
                 continue;
             }
 

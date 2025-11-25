@@ -11,10 +11,9 @@ trait MorphMapHelper
      */
     protected function resolveMorphType(string $type): string
     {
-        // If it's already a class name, get its morph alias
         if (class_exists($type)) {
             $morphMap = Relation::morphMap();
-            if (! empty($morphMap)) {
+            if (!empty($morphMap)) {
                 $alias = array_search($type, $morphMap, true);
 
                 return $alias !== false ? $alias : $type;
@@ -23,13 +22,11 @@ trait MorphMapHelper
             return $type;
         }
 
-        // If it's a morph alias, verify it exists in the map
         $morphMap = Relation::morphMap();
         if (isset($morphMap[$type])) {
             return $type;
         }
 
-        // Return as-is if no morph map is set
         return $type;
     }
 
@@ -40,17 +37,14 @@ trait MorphMapHelper
     {
         $morphMap = Relation::morphMap();
 
-        // If morph map exists and type is an alias, return the mapped class
-        if (! empty($morphMap) && isset($morphMap[$type])) {
+        if (!empty($morphMap) && isset($morphMap[$type])) {
             return $morphMap[$type];
         }
 
-        // If it's already a class name, return it
         if (class_exists($type)) {
             return $type;
         }
 
-        // Return as-is (might not exist)
         return $type;
     }
 }
