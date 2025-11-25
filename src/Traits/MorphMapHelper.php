@@ -13,7 +13,7 @@ trait MorphMapHelper
     {
         if (class_exists($type)) {
             $morphMap = Relation::morphMap();
-            if (!empty($morphMap)) {
+            if (! empty($morphMap)) {
                 $alias = array_search($type, $morphMap, true);
 
                 return $alias !== false ? $alias : $type;
@@ -37,7 +37,7 @@ trait MorphMapHelper
     {
         $morphMap = Relation::morphMap();
 
-        if (!empty($morphMap) && isset($morphMap[$type])) {
+        if (! empty($morphMap) && isset($morphMap[$type])) {
             return $morphMap[$type];
         }
 

@@ -82,7 +82,7 @@ trait CanFollow
     {
         [$targetModel, $targetType, $targetId] = $this->normalizeTarget($target);
 
-        if (!config('follow.allow_self_follow', false)) {
+        if (! config('follow.allow_self_follow', false)) {
             if ($this->getMorphClass() === $targetType && $this->getKey() === $targetId) {
                 return false;
             }
@@ -156,11 +156,11 @@ trait CanFollow
         $resolvedType = $type ? $this->resolveMorphType($type) : null;
 
         $thisFollowingIds = $this->followingRecords()
-            ->when($resolvedType, fn($q) => $q->where('followable_type', $resolvedType))
+            ->when($resolvedType, fn ($q) => $q->where('followable_type', $resolvedType))
             ->pluck('followable_id');
 
         $otherFollowingIds = $model->followingRecords()
-            ->when($resolvedType, fn($q) => $q->where('followable_type', $resolvedType))
+            ->when($resolvedType, fn ($q) => $q->where('followable_type', $resolvedType))
             ->pluck('followable_id');
 
         $mutualIds = $thisFollowingIds->intersect($otherFollowingIds)->values();
@@ -209,7 +209,7 @@ trait CanFollow
      */
     public function mutualConnections(?string $type = null): Collection
     {
-        if (!method_exists($this, 'followRecords')) {
+        if (! method_exists($this, 'followRecords')) {
             return collect();
         }
 
@@ -217,7 +217,7 @@ trait CanFollow
 
         // Get IDs of models this model follows
         $followingIds = $this->followingRecords()
-            ->when($resolvedType, fn($q) => $q->where('followable_type', $resolvedType))
+            ->when($resolvedType, fn ($q) => $q->where('followable_type', $resolvedType))
             ->pluck('followable_id');
 
         if ($followingIds->isEmpty()) {
@@ -226,7 +226,7 @@ trait CanFollow
 
         // Get IDs of models that follow this model back
         $followerIds = $this->followRecords()
-            ->when($resolvedType, fn($q) => $q->where('follower_type', $resolvedType))
+            ->when($resolvedType, fn ($q) => $q->where('follower_type', $resolvedType))
             ->pluck('follower_id');
 
         // Find mutual (intersection)
@@ -279,7 +279,7 @@ trait CanFollow
         $followsTable = config('follow.table_name', 'follows');
 
         if ($types !== null && count($types) > 0) {
-            $resolvedTypes = array_map(fn($t) => $this->resolveMorphType($t), $types);
+            $resolvedTypes = array_map(fn ($t) => $this->resolveMorphType($t), $types);
 
             if (count($resolvedTypes) === 1) {
                 return $this->buildSingleTypeFollowingsQuery($resolvedTypes[0], $followsTable);
@@ -298,7 +298,7 @@ trait CanFollow
             ->select('followable_type')
             ->distinct()
             ->pluck('followable_type')
-            ->filter(fn($t) => class_exists($this->getMorphClassFor($t)))
+            ->filter(fn ($t) => class_exists($this->getMorphClassFor($t)))
             ->values()
             ->all();
 
@@ -322,7 +322,7 @@ trait CanFollow
     {
         $modelClass = $this->getMorphClassFor($type);
 
-        if (!class_exists($modelClass)) {
+        if (! class_exists($modelClass)) {
             return $this->newQuery()->whereRaw('1 = 0');
         }
 
@@ -347,7 +347,7 @@ trait CanFollow
 
         foreach ($types as $type) {
             $modelClass = $this->getMorphClassFor($type);
-            if (!class_exists($modelClass)) {
+            if (! class_exists($modelClass)) {
                 continue;
             }
 
